@@ -27,6 +27,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ecr"
 	ecrsdk "github.com/aws/aws-sdk-go/service/ecr"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/log"
@@ -49,6 +50,7 @@ type ecrResolver struct {
 	tracker                  docker.StatusTracker
 	layerDownloadParallelism int
 	httpClient               *http.Client
+	downloader               *s3manager.Downloader
 }
 
 // ResolverOption represents a functional option for configuring the ECR
@@ -136,12 +138,18 @@ func NewResolver(options ...ResolverOption) (remotes.Resolver, error) {
 		resolverOptions.HTTPClient = http.DefaultClient
 	}
 
+	s3Downloader := s3manager.NewDownloader(resolverOptions.Session, func(d *s3manager.Downloader) {
+		d.PartSize = 64 * 1024 * 1024 // 64MB per part
+		d.Concurrency = resolverOptions.LayerDownloadParallelism
+	})
+
 	return &ecrResolver{
 		session:                  resolverOptions.Session,
 		clients:                  map[string]ecrAPI{},
 		tracker:                  resolverOptions.Tracker,
 		layerDownloadParallelism: resolverOptions.LayerDownloadParallelism,
 		httpClient:               resolverOptions.HTTPClient,
+		downloader:               s3Downloader,
 	}, nil
 }
 
@@ -307,6 +315,7 @@ func (r *ecrResolver) Fetcher(ctx context.Context, ref string) (remotes.Fetcher,
 		},
 		parallelism: r.layerDownloadParallelism,
 		httpClient:  r.httpClient,
+		downloader:  r.downloader,
 	}, nil
 }
 

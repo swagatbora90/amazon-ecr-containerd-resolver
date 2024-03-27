@@ -25,8 +25,10 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ecr"
+	"github.com/aws/aws-sdk-go/service/s3"
 	httputil "github.com/awslabs/amazon-ecr-containerd-resolver/ecr/internal/util/http"
 	ociutil "github.com/awslabs/amazon-ecr-containerd-resolver/ecr/internal/util/oci"
 	"github.com/containerd/containerd/errdefs"
@@ -38,12 +40,15 @@ import (
 	"golang.org/x/net/context/ctxhttp"
 )
 
+const maxFileSize = 1024 * 1024 * 20
+
 // ecrFetcher implements the containerd remotes.Fetcher interface and can be
 // used to pull images from Amazon ECR.
 type ecrFetcher struct {
 	ecrBase
 	parallelism int
 	httpClient  *http.Client
+	downloader  *manager.Downloader
 }
 
 var _ remotes.Fetcher = (*ecrFetcher)(nil)
@@ -122,7 +127,11 @@ func (f *ecrFetcher) fetchLayer(ctx context.Context, desc ocispec.Descriptor) (i
 	downloadURL := aws.StringValue(output.DownloadUrl)
 	ctx = log.WithLogger(ctx, log.G(ctx).WithField("url", httputil.RedactHTTPQueryValuesFromURL(downloadURL)))
 	if f.parallelism > 0 {
-		return f.fetchLayerHtcat(ctx, desc, downloadURL)
+		// Disable htcat download
+		//return f.fetchLayerHtcat(ctx, desc, downloadURL)
+
+		// POC: Use S3 Downloader provided in official SDK to do parallel pull instead
+		return f.fetchlayerS3Downloader(ctx, desc, downloadURL)
 	}
 	return f.fetchLayerURL(ctx, desc, downloadURL)
 }
@@ -207,4 +216,30 @@ func (f *ecrFetcher) fetchLayerHtcat(ctx context.Context, desc ocispec.Descripto
 		}
 	}()
 	return pr, nil
+}
+
+func (f *ecrFetcher) fetchlayerS3Downloader(ctx context.Context, desc ocispec.Descriptor, downloadURL string) (io.ReadCloser, error) {
+	log.G(ctx).Debug("ecr.fetcher.layer.s3downloader")
+	parsedURL, err := url.Parse(downloadURL)
+	if err != nil {
+		log.G(ctx).
+			WithError(err).
+			Error("ecr.fetcher.layer.s3downloader: failed to parse URL")
+		return nil, err
+	}
+	s3url := ParseAmazonS3URL(parsedURL)
+	writerAtBuffer := manager.NewWriteAtBuffer([]byte{})
+	go func() {
+		defer pw.Close()
+		_, err := f.downloader.DownloadWithContext(ctx, writerAtBuffer, &s3.GetObjectInput{
+			Bucket: aws.String(s3url.Bucket),
+			Key:    aws.String(s3url.Key),
+		})
+		if err != nil {
+			log.G(ctx).
+				WithError(httputil.RedactHTTPQueryValuesFromURLError(err)).
+				Error("ecr.fetcher.layer.s3downloader: failed to download layer")
+		}
+	}()
+	return writerAtBuffer.Bytes(), nil
 }
