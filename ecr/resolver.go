@@ -138,18 +138,12 @@ func NewResolver(options ...ResolverOption) (remotes.Resolver, error) {
 		resolverOptions.HTTPClient = http.DefaultClient
 	}
 
-	s3Downloader := s3manager.NewDownloader(resolverOptions.Session, func(d *s3manager.Downloader) {
-		d.PartSize = 64 * 1024 * 1024 // 64MB per part
-		d.Concurrency = resolverOptions.LayerDownloadParallelism
-	})
-
 	return &ecrResolver{
 		session:                  resolverOptions.Session,
 		clients:                  map[string]ecrAPI{},
 		tracker:                  resolverOptions.Tracker,
 		layerDownloadParallelism: resolverOptions.LayerDownloadParallelism,
 		httpClient:               resolverOptions.HTTPClient,
-		downloader:               s3Downloader,
 	}, nil
 }
 
@@ -308,6 +302,12 @@ func (r *ecrResolver) Fetcher(ctx context.Context, ref string) (remotes.Fetcher,
 	if err != nil {
 		return nil, err
 	}
+	r.session.Config.Region = aws.String(ecrSpec.Region())
+	s3Downloader := s3manager.NewDownloader(r.session, func(d *s3manager.Downloader) {
+		d.PartSize = 64 * 1024 * 1024 // 64MB per part
+		d.Concurrency = r.layerDownloadParallelism
+	})
+
 	return &ecrFetcher{
 		ecrBase: ecrBase{
 			client:  r.getClient(ecrSpec.Region()),
@@ -315,7 +315,7 @@ func (r *ecrResolver) Fetcher(ctx context.Context, ref string) (remotes.Fetcher,
 		},
 		parallelism: r.layerDownloadParallelism,
 		httpClient:  r.httpClient,
-		downloader:  r.downloader,
+		downloader:  s3Downloader,
 	}, nil
 }
 

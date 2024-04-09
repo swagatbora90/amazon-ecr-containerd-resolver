@@ -23,14 +23,15 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
+	"time"
 
-	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ecr"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	httputil "github.com/awslabs/amazon-ecr-containerd-resolver/ecr/internal/util/http"
-	ociutil "github.com/awslabs/amazon-ecr-containerd-resolver/ecr/internal/util/oci"
 	"github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/log"
@@ -48,13 +49,13 @@ type ecrFetcher struct {
 	ecrBase
 	parallelism int
 	httpClient  *http.Client
-	downloader  *manager.Downloader
+	downloader  *s3manager.Downloader
 }
 
 var _ remotes.Fetcher = (*ecrFetcher)(nil)
 
 func (f *ecrFetcher) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser, error) {
-	ctx = log.WithLogger(ctx, log.G(ctx).WithField("desc", ociutil.RedactDescriptor(desc)))
+	//ctx = log.WithLogger(ctx, log.G(ctx).WithField("desc", ociutil.RedactDescriptor(desc)))
 	log.G(ctx).Debug("ecr.fetch")
 
 	// need to do different things based on the media type
@@ -125,7 +126,7 @@ func (f *ecrFetcher) fetchLayer(ctx context.Context, desc ocispec.Descriptor) (i
 	}
 
 	downloadURL := aws.StringValue(output.DownloadUrl)
-	ctx = log.WithLogger(ctx, log.G(ctx).WithField("url", httputil.RedactHTTPQueryValuesFromURL(downloadURL)))
+	//ctx = log.WithLogger(ctx, log.G(ctx).WithField("url", httputil.RedactHTTPQueryValuesFromURL(downloadURL)))
 	if f.parallelism > 0 {
 		// Disable htcat download
 		//return f.fetchLayerHtcat(ctx, desc, downloadURL)
@@ -220,26 +221,34 @@ func (f *ecrFetcher) fetchLayerHtcat(ctx context.Context, desc ocispec.Descripto
 
 func (f *ecrFetcher) fetchlayerS3Downloader(ctx context.Context, desc ocispec.Descriptor, downloadURL string) (io.ReadCloser, error) {
 	log.G(ctx).Debug("ecr.fetcher.layer.s3downloader")
-	parsedURL, err := url.Parse(downloadURL)
+
+	pr, pw := io.Pipe()
+	destFileName := "/tmp/" + time.Now().Format("20060102150405")
+	//open the file
+	tmpFile, err := os.OpenFile(destFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file %q, %v", destFileName, err)
+	}
+	log.G(ctx).WithField("downloadURL", downloadURL).Error("Before simple parsing")
+
+	s3url := simpleParser(downloadURL)
+
+	log.G(ctx).WithField("Bucket", s3url.Bucket).WithField("Key", s3url.Key).Error("Parsed S3 URL")
+
+	log.G(ctx).Error("Parsing complete")
+
+	_, err = f.downloader.Download(tmpFile, &s3.GetObjectInput{
+		Bucket: aws.String(s3url.Bucket),
+		Key:    aws.String(s3url.Key),
+	})
 	if err != nil {
 		log.G(ctx).
 			WithError(err).
-			Error("ecr.fetcher.layer.s3downloader: failed to parse URL")
-		return nil, err
+			Error("ecr.fetcher.layer.s3downloader: failed to download layer")
 	}
-	s3url := ParseAmazonS3URL(parsedURL)
-	writerAtBuffer := manager.NewWriteAtBuffer([]byte{})
 	go func() {
 		defer pw.Close()
-		_, err := f.downloader.DownloadWithContext(ctx, writerAtBuffer, &s3.GetObjectInput{
-			Bucket: aws.String(s3url.Bucket),
-			Key:    aws.String(s3url.Key),
-		})
-		if err != nil {
-			log.G(ctx).
-				WithError(httputil.RedactHTTPQueryValuesFromURLError(err)).
-				Error("ecr.fetcher.layer.s3downloader: failed to download layer")
-		}
+		io.Copy(pw, tmpFile)
 	}()
-	return writerAtBuffer.Bytes(), nil
+	return pr, nil
 }

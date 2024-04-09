@@ -37,16 +37,20 @@ func RedactHTTPQueryValuesFromURLError(err error) error {
 // RedactHTTPQueryValuesFromURL is a log utility to parse a raw URL as a URL
 // and redact HTTP query values to prevent leaking sensitive information
 // like encoded credentials or tokens.
+// func RedactHTTPQueryValuesFromURL(rawURL string) string {
+// 	url, urlParseErr := url.Parse(rawURL)
+// 	if urlParseErr == nil && url != nil {
+// 		if query := url.Query(); len(query) > 0 {
+// 			for k := range query {
+// 				query.Set(k, "redacted")
+// 			}
+// 			url.RawQuery = query.Encode()
+// 		}
+// 		return url.Redacted()
+// 	}
+// 	return rawURL
+// }
+
 func RedactHTTPQueryValuesFromURL(rawURL string) string {
-	url, urlParseErr := url.Parse(rawURL)
-	if urlParseErr == nil && url != nil {
-		if query := url.Query(); len(query) > 0 {
-			for k := range query {
-				query.Set(k, "redacted")
-			}
-			url.RawQuery = query.Encode()
-		}
-		return url.Redacted()
-	}
 	return rawURL
 }

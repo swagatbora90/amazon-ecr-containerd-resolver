@@ -17,6 +17,7 @@ package ecr
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"regexp"
 	"strings"
@@ -172,4 +173,34 @@ func parseBucketAndRegionFromHost(host string, re *regexp.Regexp, bucketIdx, reg
 func (output AmazonS3URL) String() string {
 	return fmt.Sprintf("{Region: %s; Bucket: %s; Key: %s; IsValidS3URI: %v; IsPathStyle: %v}",
 		output.Region, output.Bucket, output.Key, output.IsValidS3URI, output.IsPathStyle)
+}
+
+type S3URL struct {
+	Bucket string
+	Key    string
+}
+
+func simpleParser(s3URL string) (output AmazonS3URL) {
+	parsedURL, _ := url.Parse(s3URL)
+	log.Printf("parsedURL %v", parsedURL)
+
+	output = AmazonS3URL{
+		IsValidS3URI: false,
+		IsPathStyle:  false,
+		Bucket:       "",
+		Key:          "",
+		Region:       "",
+	}
+	var err error
+	output, err = parseBucketAndRegionFromHost(parsedURL.Host, vpceUrlRegex, vpceUrlPatternBucketIdx, vpceUrlPatternRegionIdx)
+	if err != nil {
+		output, err = parseBucketAndRegionFromHost(parsedURL.Host, nonVpceUrlRegex, nonVpceUrlPatternBucketIdx, nonVpceUrlPatternRegionIdx)
+		if err != nil {
+			output.IsValidS3URI = false
+			return
+		}
+	}
+	output.Bucket = output.Bucket + "/" + parsedURL.Path
+	output.Key = parsedURL.RawQuery
+	return
 }
