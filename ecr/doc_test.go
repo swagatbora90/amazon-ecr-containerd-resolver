@@ -20,8 +20,8 @@ import (
 	"fmt"
 
 	"github.com/awslabs/amazon-ecr-containerd-resolver/ecr"
-	"github.com/containerd/containerd"
-	"github.com/containerd/containerd/namespaces"
+	containerd "github.com/containerd/containerd/v2/client"
+	"github.com/containerd/containerd/v2/pkg/namespaces"
 )
 
 func ExampleNewResolver_pull() {

@@ -1,6 +1,6 @@
 package testdata
 
-import "github.com/containerd/containerd/images"
+import "github.com/containerd/containerd/v2/core/images"
 
 // DockerSchema2Manifest provides a Docker v2 schema 2 manifest document.
 //

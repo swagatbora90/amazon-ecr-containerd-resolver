@@ -29,7 +29,7 @@ import (
 	"time"
 
 	"github.com/containerd/containerd/pkg/progress"
-	"github.com/containerd/containerd/remotes/docker"
+	"github.com/containerd/containerd/v2/core/remotes/docker"
 	units "github.com/docker/go-units"
 )
 
