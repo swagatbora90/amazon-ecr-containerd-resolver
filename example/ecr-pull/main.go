@@ -19,6 +19,8 @@ import (
 	"context"
 	"os"
 	"strconv"
+	"time"
+	"fmt"
 
 	"github.com/awslabs/amazon-ecr-containerd-resolver/ecr"
 	"github.com/containerd/containerd"
@@ -104,6 +106,8 @@ func main() {
 	if newSnapshotter := os.Getenv("CONTAINERD_SNAPSHOTTER"); newSnapshotter != "" {
 		snapshotter = newSnapshotter
 	}
+	
+	start := time.Now()
 	log.G(ctx).
 		WithField("img", img.Name()).
 		WithField("snapshotter", snapshotter).
@@ -112,6 +116,7 @@ func main() {
 	if err != nil {
 		log.G(ctx).WithError(err).WithField("img", img.Name).Fatal("Failed to unpack")
 	}
+	fmt.Printf("unpack done: %s\t\n", time.Since(start))
 }
 
 func parseEnvInt(ctx context.Context, varname string, val *int) {
