@@ -46,6 +46,7 @@ func showProgress(ctx context.Context, ongoing *jobs, cs content.Store, out io.W
 		start    = time.Now()
 		statuses = map[string]StatusInfo{}
 		done     bool
+		seen 	string
 	)
 	defer ticker.Stop()
 
@@ -76,7 +77,7 @@ outer:
 				}
 				// update status of active entries!
 				for _, active := range active {
-					statuses[active.Ref] = StatusInfo{
+					statusInfo := StatusInfo{
 						Ref:       active.Ref,
 						Status:    "downloading",
 						Offset:    active.Offset,
@@ -84,6 +85,11 @@ outer:
 						StartedAt: active.StartedAt,
 						UpdatedAt: active.UpdatedAt,
 					}
+					if active.Offset == active.Total && seen != active.Ref {
+                                               seen = active.Ref
+                                               fmt.Printf("Image ref: %s Network Download Complete in: %f\n", active.Ref, time.Since(active.StartedAt).Seconds())
+                                       }
+					statuses[active.Ref] = statusInfo
 					activeSeen[active.Ref] = struct{}{}
 				}
 			}

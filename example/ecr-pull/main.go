@@ -116,7 +116,7 @@ func main() {
 	if err != nil {
 		log.G(ctx).WithError(err).WithField("img", img.Name).Fatal("Failed to unpack")
 	}
-	fmt.Printf("unpack done: %s\t\n", time.Since(start))
+	fmt.Println("unpackTime", time.Since(start).Seconds())
 }
 
 func parseEnvInt(ctx context.Context, varname string, val *int) {
