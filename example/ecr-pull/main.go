@@ -93,6 +93,8 @@ func main() {
 		containerd.WithResolver(resolver),
 		containerd.WithImageHandler(h),
 		containerd.WithSchema1Conversion)
+		//	containerd.WithMaxConcurrentDownloads(3),
+		//containerd.WithPullUnpack)
 	stopProgress()
 	if err != nil {
 		log.G(ctx).WithError(err).WithField("ref", ref).Fatal("Failed to pull")
