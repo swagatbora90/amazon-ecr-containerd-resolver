@@ -17,7 +17,7 @@ echo "running command in background"
 "$@" > ${OUTPUT} 2>&1 &
 
 command_pid="$!"
-echo $command_pid | sudo tee /sys/fs/cgroup/${CGROUP}/cgroup.procs
+#echo $command_pid | sudo tee /sys/fs/cgroup/${CGROUP}/cgroup.procs
 
 add_child_pid() {
 local parent=$1
@@ -27,7 +27,7 @@ add_child_pid $child_pid
 done
 }
 
-add_child_pid $command_pid
+#add_child_pid $command_pid
 
 wait $command_pid
 echo "Pull complete"
